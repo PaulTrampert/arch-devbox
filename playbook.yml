@@ -1,0 +1,90 @@
+---
+- hosts: all
+  become: yes
+  become_user: root
+  vars:
+    apps:
+      - base-devel
+      - vim
+      - code
+      - chromium
+      - gnome-tweaks
+      - dotnet-sdk
+      - git
+      - rclone
+      - docker
+      - docker-compose
+  tasks:
+    - name: Pull Mirrorlist
+      get_url:
+        url: "https://www.archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
+        dest: "/etc/pacman.d/mirrorlist"
+        force: yes
+
+    - name: Uncomment Mirrors
+      replace:
+        path: /etc/pacman.d/mirrorlist
+        regexp: "^#Server"
+        replace: "Server"
+
+    - name: Install reflector
+      pacman:
+        name: reflector
+        state: latest
+        update_cache: yes
+
+    - name: Sort mirrors
+      shell: "reflector --country 'United States' --latest 50 --protocol https --sort rate --save /etc/pacman.d/mirrorlist"
+
+    - name: Ensure packages updated
+      pacman:
+        state: latest
+        update_cache: yes
+        upgrade: yes
+
+    - name: Install GNOME
+      pacman:
+        name: ['xorg', 'xorg-server', 'gnome']
+        state: latest
+
+    - name: Disable Wayland
+      replace:
+        path: /etc/gdm/custom.conf
+        regexp: "^#?WaylandEnable=(true|false)"
+        replace: "WaylandEnable=false"
+
+    - name: Make sure Gnome Desktop Enabled
+      service:
+        name: gdm.service
+        enabled: yes
+        state: started
+
+    - name: Uninstall virtualbox-guest-utils-nox
+      pacman:
+        name: 'virtualbox-guest-utils-nox'
+        state: absent
+
+    - name: Install virtual-box-guest-utils
+      pacman:
+        name: 'virtualbox-guest-utils'
+        state: latest
+
+    - name: Install user software
+      pacman:
+        name: "{{apps}}"
+        state: latest
+
+    - name: Clone Pamac
+      become: no
+      git:
+        repo: https://aur.archlinux.org/pamac-aur.git
+        dest: /home/vagrant/pamac-aur
+
+    - name: Build Pamac
+      shell: "cd /home/vagrant/pamac-aur && makepkg -scf --noconfirm"
+      become: no
+
+    - name: Install Pamac
+      shell: "cd /home/vagrant/pamac-aur && pacman -U --noconfirm $(ls | grep \\.pkg\\.tar\\.xz)"
+
+
